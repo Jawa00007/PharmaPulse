@@ -18,34 +18,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $supplier_id = (int)$_POST['supplier_id'];
     $quantity = (int)$_POST['quantity'];
     $unit_cost = (float)$_POST['unit_cost'];
+    $sell_price = (float)$_POST['sell_price'];
     $expiry_date = $_POST['expiry_date'];
-    $manufacture_date = $_POST['manufacture_date'];
+    $manufacture_date = $_POST['manufacture_date'] ?: null;
     $received_date = $_POST['received_date'] ?: date('Y-m-d');
     $notes = sanitize_input($_POST['notes']);
-    
-    if ($product_id && $batch_number && $quantity > 0 && $unit_cost > 0 && $expiry_date) {
+
+    if ($product_id && $batch_number && $quantity > 0 && $unit_cost > 0 && $sell_price > 0 && $expiry_date) {
         // Check if expiry date is in the future
         if (strtotime($expiry_date) < time()) {
             echo "<script>alert('Cannot add expired stock!');</script>";
         } else {
             try {
+                $pdo->beginTransaction();
+
                 $stmt = $pdo->prepare("
-                    INSERT INTO stock_batches 
-                    (product_id, batch_number, supplier_id, quantity_received, quantity_remaining, 
+                    INSERT INTO stock_batches
+                    (product_id, batch_number, supplier_id, quantity_received, quantity_remaining,
                      unit_cost, expiry_date, manufacture_date, received_date, received_by, notes)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt->execute([
                     $product_id, $batch_number, $supplier_id, $quantity, $quantity,
-                    $unit_cost, $expiry_date, $manufacture_date, $received_date, 
+                    $unit_cost, $expiry_date, $manufacture_date, $received_date,
                     $current_user['user_id'], $notes
                 ]);
-                
-                log_security_event($pdo, $current_user['user_id'], 'STOCK_ADDED', 
+
+                $update = $pdo->prepare("UPDATE products SET unit_price = ? WHERE product_id = ?");
+                $update->execute([$sell_price, $product_id]);
+
+                $pdo->commit();
+
+                log_security_event($pdo, $current_user['user_id'], 'STOCK_ADDED',
                     "Product ID: $product_id, Batch: $batch_number, Qty: $quantity");
-                
+
                 echo "<script>alert('Stock added successfully!'); window.location='add.php';</script>";
             } catch (PDOException $e) {
+                $pdo->rollBack();
                 echo "<script>alert('Error: Batch already exists or invalid data');</script>";
             }
         }
@@ -73,11 +82,11 @@ $suppliers = $pdo->query("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY s
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
             <div class="form-group">
                 <label class="form-label">Product *</label>
-                <select name="product_id" class="form-control" required>
+                <select name="product_id" id="productSelect" class="form-control" required>
                     <option value="">Select Product</option>
                     <?php foreach ($products as $product): ?>
-                    <option value="<?php echo $product['product_id']; ?>">
-                        <?php echo clean($product['product_name']); ?> 
+                    <option value="<?php echo $product['product_id']; ?>" data-price="<?php echo $product['unit_price']; ?>">
+                        <?php echo clean($product['product_name']); ?>
                         (<?php echo clean($product['product_code']); ?>)
                     </option>
                     <?php endforeach; ?>
@@ -113,7 +122,12 @@ $suppliers = $pdo->query("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY s
                 <label class="form-label">Unit Cost (PKR) *</label>
                 <input type="number" step="0.01" name="unit_cost" class="form-control" required min="0.01">
             </div>
-            
+
+            <div class="form-group">
+                <label class="form-label">Sell Price (PKR) *</label>
+                <input type="number" step="0.01" name="sell_price" id="sellPriceInput" class="form-control" required min="0.01">
+            </div>
+
             <div class="form-group">
                 <label class="form-label">Expiry Date *</label>
                 <input type="date" name="expiry_date" class="form-control" required 
@@ -158,7 +172,7 @@ $suppliers = $pdo->query("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY s
     
     <?php
     $recent = $pdo->query("
-        SELECT sb.*, p.product_name, p.product_code, s.supplier_name, u.full_name as received_by_name
+        SELECT sb.*, p.product_name, p.product_code, p.unit_price AS sell_price, s.supplier_name, u.full_name as received_by_name
         FROM stock_batches sb
         INNER JOIN products p ON sb.product_id = p.product_id
         LEFT JOIN suppliers s ON sb.supplier_id = s.supplier_id
@@ -167,7 +181,7 @@ $suppliers = $pdo->query("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY s
         LIMIT 10
     ")->fetchAll();
     ?>
-    
+
     <div class="table-container">
         <table class="data-table">
             <thead>
@@ -176,6 +190,8 @@ $suppliers = $pdo->query("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY s
                     <th>Batch</th>
                     <th>Quantity</th>
                     <th>Cost</th>
+                    <th>Sell Price</th>
+                    <th>Margin</th>
                     <th>Expiry</th>
                     <th>Supplier</th>
                     <th>Received By</th>
@@ -192,6 +208,8 @@ $suppliers = $pdo->query("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY s
                     <td><?php echo clean($item['batch_number']); ?></td>
                     <td><?php echo $item['quantity_received']; ?></td>
                     <td>PKR <?php echo number_format($item['unit_cost'], 2); ?></td>
+                    <td>PKR <?php echo number_format($item['sell_price'], 2); ?></td>
+                    <td>PKR <?php echo number_format($item['sell_price'] - $item['unit_cost'], 2); ?></td>
                     <td><?php echo date('M d, Y', strtotime($item['expiry_date'])); ?></td>
                     <td><?php echo clean($item['supplier_name'] ?: 'N/A'); ?></td>
                     <td><?php echo clean($item['received_by_name']); ?></td>
@@ -202,5 +220,18 @@ $suppliers = $pdo->query("SELECT * FROM suppliers WHERE is_active = 1 ORDER BY s
         </table>
     </div>
 </div>
+
+<script>
+document.getElementById('productSelect').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const price = selectedOption.getAttribute('data-price');
+    const sellPriceInput = document.getElementById('sellPriceInput');
+    if (price) {
+        sellPriceInput.value = parseFloat(price).toFixed(2);
+    } else {
+        sellPriceInput.value = '';
+    }
+});
+</script>
 
 <?php require_once __DIR__ . '/../../templates/footer.php'; ?>

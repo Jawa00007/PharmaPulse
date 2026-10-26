@@ -176,8 +176,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     // Insert sale item
                     $insert = $pdo->prepare("
-                        INSERT INTO sale_items (sale_id, product_id, batch_id, quantity, unit_price, subtotal)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        INSERT INTO sale_items (sale_id, product_id, batch_id, quantity, unit_price, unit_cost, subtotal)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                     ");
                     $insert->execute([
                         $sale_id,
@@ -185,6 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $batch['batch_id'],
                         $take,
                         $product['unit_price'],
+                        $batch['unit_cost'],
                         $product['unit_price'] * $take
                     ]);
                     

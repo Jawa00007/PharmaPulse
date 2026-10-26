@@ -20,7 +20,20 @@ try {
     // Today's sales
     $today_sales_query = "SELECT COALESCE(SUM(total_amount), 0) as today_sales FROM sales WHERE DATE(sale_date) = CURDATE()";
     $today_sales = $pdo->query($today_sales_query)->fetchColumn();
-    
+
+    // Today's profit
+    $today_profit_query = "
+        SELECT COALESCE(SUM((si.unit_price - si.unit_cost) * si.quantity), 0) as today_profit
+        FROM sale_items si
+        INNER JOIN sales s ON si.sale_id = s.sale_id
+        WHERE DATE(s.sale_date) = CURDATE()
+    ";
+    $today_profit = $pdo->query($today_profit_query)->fetchColumn();
+
+    // Total (all-time) profit
+    $total_profit_query = "SELECT COALESCE(SUM((unit_price - unit_cost) * quantity), 0) as total_profit FROM sale_items";
+    $total_profit = $pdo->query($total_profit_query)->fetchColumn();
+
     // Expiring items (next 30 days)
     $expiring_query = "SELECT COUNT(*) FROM stock_batches WHERE DATEDIFF(expiry_date, CURDATE()) BETWEEN 0 AND 30 AND quantity_remaining > 0";
     $expiring_count = $pdo->query($expiring_query)->fetchColumn();
@@ -79,7 +92,17 @@ try {
         <div class="stat-label"><i class="fas fa-chart-line"></i> Today's Sales</div>
         <div class="stat-value">PKR <?php echo number_format($today_sales, 2); ?></div>
     </div>
-    
+
+    <div class="stat-card success">
+        <div class="stat-label"><i class="fas fa-coins"></i> Today's Profit</div>
+        <div class="stat-value">PKR <?php echo number_format($today_profit, 2); ?></div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label"><i class="fas fa-sack-dollar"></i> Total Profit</div>
+        <div class="stat-value">PKR <?php echo number_format($total_profit, 2); ?></div>
+    </div>
+
     <div class="stat-card warning">
         <div class="stat-label"><i class="fas fa-exclamation-triangle"></i> Expiring Soon</div>
         <div class="stat-value"><?php echo $expiring_count; ?></div>
