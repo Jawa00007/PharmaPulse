@@ -115,7 +115,7 @@ A comprehensive, **mobile-responsive** pharmacy management system built with PHP
 
 5. **Access the application**
    - Open: green-spider-729183.hostingersite.com
-   - Login: `admin` / `Admin@123`
+   - Login with the admin account created during setup
 
 ## 📱 Mobile Experience
 
@@ -246,9 +246,7 @@ SESSION_TIMEOUT=3600
 
 ### Default Users
 
-- **Username**: `admin`
-- **Password**: `Admin@123`
-- **Role**: Administrator
+- An initial **Administrator** account is created during setup — set its credentials in your own `.env`/seed step rather than using a shared default.
 
 ## 📱 Mobile Optimization
 
